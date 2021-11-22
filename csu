@@ -1,0 +1,11 @@
+#!/bin/bash
+
+make
+echo
+port=$[ $RANDOM % 1024 + 1024 ]
+qemu-arm -cpu cortex-m4 -g $port build/firmware.elf &
+qemu_pid=$!
+echo
+[ -f .gdb ] && commands_file_option="-x .gdb"
+arm-none-eabi-gdb build/firmware.elf -ex 'target remote localhost:'$port -ex 'b End_Main' $commands_file_option
+kill $qemu_pid
