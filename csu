@@ -1,11 +1,14 @@
 #!/bin/bash
 
+[ -n "`which gdb-multiarch`" ] && gdb="gdb-multiarch" || gdb="arm-none-eabi-gdb"
+
+echo [Calling Make...]
 make
-echo
+echo [Starting QEMU...]
 port=$[ $RANDOM % 1024 + 1024 ]
 qemu-arm -cpu cortex-m4 -g $port build/firmware.elf &
 qemu_pid=$!
-echo
+echo [Starting GDB...]
 [ -f .gdb ] && commands_file_option="-x .gdb"
-arm-none-eabi-gdb build/firmware.elf -ex 'target remote localhost:'$port -ex 'b End_Main' $commands_file_option
+$gdb build/firmware.elf -ex 'target remote localhost:'$port -ex 'b End_Main' $commands_file_option
 kill $qemu_pid
