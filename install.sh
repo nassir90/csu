@@ -1,3 +1,3 @@
 #!/bin/sh
 
-ln -s `pwd`/csu ~/bin/csu
+cp ./csu ~/bin/csu
