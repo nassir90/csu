@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 # We only make beforehand if we are not running in emacs mode
 if [[ ! "$*" =~ e ]]
 then
