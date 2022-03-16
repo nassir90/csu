@@ -1,14 +1,25 @@
 #!/bin/bash
 
-[ -n "`which gdb-multiarch`" ] && gdb="gdb-multiarch" || gdb="arm-none-eabi-gdb"
 
-echo [Calling Make...]
-make
-echo [Starting QEMU...]
+# We only make beforehand if we are not running in emacs mode
+if [[ ! "$*" =~ e ]]
+then
+    echo [Calling Make...]
+    make
+    sink=1
+else
+    emacs_options="-i=mi"
+    sink=/dev/null
+fi
+
+echo [Starting QEMU...] 1>$sink
 port=$[ $RANDOM % 1024 + 1024 ]
 qemu-arm -cpu cortex-m4 -g $port build/firmware.elf &
 qemu_pid=$!
-echo [Starting GDB...]
+
+echo [Starting GDB...] 1>$sink
 [ -f .gdb ] && commands_file_option="-x .gdb"
-$gdb build/firmware.elf -ex 'target remote localhost:'$port -ex 'b End_Main' $commands_file_option
+which gdb-multiarch 1>$sink 2>$sink && gdb="gdb-multiarch" || gdb="arm-none-eabi-gdb"
+$gdb build/firmware.elf -ex 'target remote localhost:'$port -ex 'b End_Main' $commands_file_option $emacs_options
+
 kill $qemu_pid
