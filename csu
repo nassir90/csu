@@ -1,5 +1,6 @@
 #!/bin/bash
 
+
 # We only make beforehand if we are not running in emacs mode
 if [[ ! "$*" =~ e ]]
 then
@@ -13,7 +14,7 @@ fi
 
 echo [Starting QEMU...] 1>$sink
 port=$[ $RANDOM % 1024 + 1024 ]
-qemu-arm -cpu cortex-m4 -g $port build/firmware.elf &
+qemu-system-gnuarmeclipse --board STM32F4-Discovery -gdb tcp::$port --image build/firmware.elf &
 qemu_pid=$!
 
 echo [Starting GDB...] 1>$sink
