@@ -22,4 +22,4 @@ echo [Starting GDB...] 1>$sink
 which gdb-multiarch 1>$sink 2>$sink && gdb="gdb-multiarch" || gdb="arm-none-eabi-gdb"
 $gdb build/firmware.elf -ex 'target remote localhost:'$port -ex 'b End_Main' $commands_file_option $emacs_options
 
-kill $qemu_pid
+ps $qemu_pid && kill $qemu_pid
