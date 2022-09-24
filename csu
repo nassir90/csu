@@ -4,19 +4,19 @@
 # We only make beforehand if we are not running in emacs mode
 if [[ ! "$*" =~ e ]]
 then
-    echo [Calling Make...]
+    echo '[Calling Make...]'
     make
 else
     emacs_options="-i=mi"
     exec 1>/dev/null 2>/dev/null
 fi
 
-echo [Starting QEMU...]
+echo '[Starting QEMU...]'
 port=$[ $RANDOM % 1024 + 1024 ]
 qemu-system-gnuarmeclipse --board STM32F4-Discovery -gdb tcp::$port --image build/firmware.elf &
 qemu_pid=$!
 
-echo [Starting GDB...]
+echo '[Starting GDB...]'
 [ -f .gdb ] && commands_file_option="-x .gdb"
 which gdb-multiarch && gdb="gdb-multiarch" || gdb="arm-none-eabi-gdb"
 $gdb build/firmware.elf -ex 'target remote localhost:'$port -ex 'b End_Main' $commands_file_option $emacs_options
