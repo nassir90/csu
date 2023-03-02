@@ -5,36 +5,55 @@ trap 'kill %1' SIGINT SIGKILL
 declare emacs stm
 >/dev/null which gdb-multiarch && gdb="gdb-multiarch" || gdb="arm-none-eabi-gdb"
 gdb_port=$[ $RANDOM % 1024 + 1024 ]
+lab=$(pwd | grep -Po lab\\d\\d)
+pico_apps_home=${PICO_APPS_HOME:-~/projects/pico-apps}
 zparseopts -F -D -K -- \
-           {p,-port}:=port \
+           {p,-port}:=gdb_port \
            {e,-emacs}=emacs \
            {s,-stm}=stm \
+           {l,-lab}:=lab \
         || exit 1
 
 [ -f .gdb ] && gdb_config_option=(-x `realpath .gdb`)
-[ $emacs ] && exec 1>&4 2>&5 1>/dev/null 2>/dev/null
+# If running in emacs mdoe, redirect stdout to null to avoid breaking
+# gdb plugin.
+[ $emacs ] && exec 4>&1 5>&2 1>/dev/null 2>/dev/null
+
+make_if_not_emacs() {
+    if [ ! $emacs ]
+    then
+        echo '[ Calling Make... ]'
+        make
+    fi
+}
 
 if [ ! $stm ]
 then
-    pico_apps_home=${PICO_APPS_HOME:-~/projects/pico-apps}
-    lab=$(pwd | grep -Po lab\\d\\d)
+    [ -z "$lab" ] && echo Lab not specified! && exit 1
     cd $pico_apps_home/build/labs/$lab
-    if [ ! $emacs ]; then make || exit 1; fi
+    
+    make_if_not_emacs || exit 1
+
+    echo '[ Starting OpenOCD... ]'
     openocd \
         -f interface/cmsis-dap.cfg \
         -c "adapter speed 5000" \
         -f target/rp2040.cfg \
         -c "program $lab.elf" \
         -s tcl &
+
     gdb_file=$lab.elf
-    gdb_commands=(-ex "target extended-remote localhost:3333"
+    gdb_options=(-ex "target extended-remote localhost:3333"
                   -ex "load")
-        
 else
-    # We only make beforehand if we are not running in emacs mode
-    [ ! $emacs ] && echo '[Calling Make...]' && make
+    make_if_not_emacs || exit 1
+
     echo '[Starting QEMU...]'
-    qemu-system-gnuarmeclipse --board STM32F4-Discovery -gdb tcp::$port --image build/firmware.elf &
+    qemu-system-gnuarmeclipse \
+        --board STM32F4-Discovery \
+        -gdb tcp::$gdb_port \
+        --image build/firmware.elf &
+
     gdb_file=build/firmware.elf
     gdb_options=(-ex "target remote localhost:$gdb_port"
                  -ex "b End_Main")
@@ -42,6 +61,7 @@ else
 fi
 
 echo '[Starting GDB...]'
+# Restore stdout to give output to emacs.
 [ $emacs ] && exec 1>&4 2>&5
 $gdb $gdb_file \
      ${emacs:+'-i=mi'} \
