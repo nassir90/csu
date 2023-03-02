@@ -1,24 +1,61 @@
 #!/bin/zsh
 
+trap 'kill %1' SIGINT SIGKILL
 
-# We only make beforehand if we are not running in emacs mode
-if [[ ! "$*" =~ e ]]
+usage=(
+    "-p/--port"
+    "-e/--emacs"
+    "-r/--rp2040"
+    "-c/--config"
+    "--openocd_port"
+)
+
+declare emacs help stm
+>/dev/null which gdb-multiarch && gdb="gdb-multiarch" || gdb="arm-none-eabi-gdb"
+gdb_port=$[ $RANDOM % 1024 + 1024 ]
+zparseopts -F -D -K -- \
+           {p,-port}:=port \
+           {e,-emacs}=emacs \
+           {s,-stm}=stm \
+           {h,-help}=help \
+        || exit 1
+
+[ $help ] && print -l $usage
+[ -f .gdb ] && gdb_config_option=(-x `realpath .gdb`)
+[ $emacs ] && exec 1>&4 2>&5 1>/dev/null 2>/dev/null
+
+if [ ! $stm ]
 then
-    echo '[Calling Make...]'
-    make
+    pico_apps_home=${PICO_APPS_HOME:-~/projects/pico-apps}
+    lab=$(pwd | grep -Po lab\\d\\d)
+    cd $pico_apps_home/build/labs/$lab
+    if [ ! $emacs ]; then make || exit 1; fi
+    openocd \
+        -f interface/cmsis-dap.cfg \
+        -c "adapter speed 5000" \
+        -f target/rp2040.cfg \
+        -c "program $lab.elf" \
+        -s tcl &
+    gdb_file=$lab.elf
+    gdb_commands=(-ex "target extended-remote localhost:3333"
+                  -ex "load")
+        
 else
-    emacs_options="-i=mi"
-    exec 1>/dev/null 2>/dev/null
+    # We only make beforehand if we are not running in emacs mode
+    [ ! $emacs ] && echo '[Calling Make...]' && make
+    echo '[Starting QEMU...]'
+    qemu-system-gnuarmeclipse --board STM32F4-Discovery -gdb tcp::$port --image build/firmware.elf &
+    gdb_file=build/firmware.elf
+    gdb_options=(-ex "target remote localhost:$gdb_port"
+                 -ex "b End_Main")
+    
 fi
 
-echo '[Starting QEMU...]'
-port=$[ $RANDOM % 1024 + 1024 ]
-qemu-system-gnuarmeclipse --board STM32F4-Discovery -gdb tcp::$port --image build/firmware.elf &
-qemu_pid=$!
-
 echo '[Starting GDB...]'
-[ -f .gdb ] && commands_file_option="-x .gdb"
-which gdb-multiarch && gdb="gdb-multiarch" || gdb="arm-none-eabi-gdb"
-$gdb build/firmware.elf -ex 'target remote localhost:'$port -ex 'b End_Main' $commands_file_option $emacs_options
-
-ps $qemu_pid && kill $qemu_pid
+[ $emacs ] && exec 1>&4 2>&5
+$gdb $gdb_file \
+     ${emacs:+'-i=mi'} \
+     "${gdb_config_option[@]}" \
+     "${gdb_options[@]}"
+                
+kill %1
