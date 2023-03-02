@@ -2,25 +2,15 @@
 
 trap 'kill %1' SIGINT SIGKILL
 
-usage=(
-    "-p/--port"
-    "-e/--emacs"
-    "-r/--rp2040"
-    "-c/--config"
-    "--openocd_port"
-)
-
-declare emacs help stm
+declare emacs stm
 >/dev/null which gdb-multiarch && gdb="gdb-multiarch" || gdb="arm-none-eabi-gdb"
 gdb_port=$[ $RANDOM % 1024 + 1024 ]
 zparseopts -F -D -K -- \
            {p,-port}:=port \
            {e,-emacs}=emacs \
            {s,-stm}=stm \
-           {h,-help}=help \
         || exit 1
 
-[ $help ] && print -l $usage
 [ -f .gdb ] && gdb_config_option=(-x `realpath .gdb`)
 [ $emacs ] && exec 1>&4 2>&5 1>/dev/null 2>/dev/null
 
