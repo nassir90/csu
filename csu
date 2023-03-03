@@ -5,13 +5,15 @@ trap 'kill %1' SIGINT SIGKILL
 declare emacs stm
 >/dev/null which gdb-multiarch && gdb="gdb-multiarch" || gdb="arm-none-eabi-gdb"
 gdb_port=$[ $RANDOM % 1024 + 1024 ]
-lab=$(pwd | grep -Po lab\\d\\d)
 pico_apps_home=${PICO_APPS_HOME:-~/projects/pico-apps}
+target_build_dir=$pico_apps_home/build/$(realpath `pwd` --relative-to $pico_apps_home)
+target=$(basename $target_build_dir)
 zparseopts -F -D -K -- \
            {p,-port}:=gdb_port \
            {e,-emacs}=emacs \
            {s,-stm}=stm \
-           {l,-lab}:=lab \
+           {t,-target}:=target \
+           {b,-build-only}=build_only \
         || exit 1
 
 [ -f .gdb ] && gdb_config_option=(-x `realpath .gdb`)
@@ -23,30 +25,32 @@ make_if_not_emacs() {
     if [ ! $emacs ]
     then
         echo '[ Calling Make... ]'
-        make
+        make $target
     fi
 }
 
 if [ ! $stm ]
 then
-    [ -z "$lab" ] && echo Lab not specified! && exit 1
-    cd $pico_apps_home/build/labs/$lab
+    [ -z "$target" ] && echo Target not specified! && exit 1
+    cd $target_build_dir
     
     make_if_not_emacs || exit 1
+    [ $build_only ] && exit
 
     echo '[ Starting OpenOCD... ]'
     openocd \
         -f interface/cmsis-dap.cfg \
         -c "adapter speed 5000" \
         -f target/rp2040.cfg \
-        -c "program $lab.elf" \
+        -c "program $target.elf" \
         -s tcl &
 
-    gdb_file=$lab.elf
+    gdb_file=$target.elf
     gdb_options=(-ex "target extended-remote localhost:3333"
-                  -ex "load")
+                 -ex "load")
 else
     make_if_not_emacs || exit 1
+    [ $build_only ] && exit
 
     echo '[Starting QEMU...]'
     qemu-system-gnuarmeclipse \
@@ -65,7 +69,7 @@ echo '[Starting GDB...]'
 [ $emacs ] && exec 1>&4 2>&5
 $gdb $gdb_file \
      ${emacs:+'-i=mi'} \
-     "${gdb_config_option[@]}" \
-     "${gdb_options[@]}"
+     $gdb_config_option \
+     $gdb_options
                 
 kill %1
