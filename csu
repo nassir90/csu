@@ -46,7 +46,7 @@ make_if_not_emacs() {
     if [ ! $emacs ]
     then
         echo '[ Calling Make... ]'
-        make $target
+        make
     fi
 }
 
