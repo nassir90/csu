@@ -2,10 +2,20 @@
 
 trap 'kill %1' SIGINT SIGKILL
 
+# Keep on goinginto parent directory until a file characteristic to
+# the root of the pico apps repository is found. In this case, we use
+# pico_sdk_import.cmake.
+find_pico_apps_home() {
+    [ -e pico_sdk_import.cmake ] && pwd && return
+    cd ..
+    [ `pwd` = / ] && echo Could not find pico apps home && exit 1
+    find_pico_apps_home
+}
+
 declare emacs stm
 >/dev/null which gdb-multiarch && gdb="gdb-multiarch" || gdb="arm-none-eabi-gdb"
 gdb_port=$[ $RANDOM % 1024 + 1024 ]
-pico_apps_home=${PICO_APPS_HOME:-~/projects/pico-apps}
+pico_apps_home=${PICO_APPS_HOME:-`find_pico_apps_home`}
 target_build_dir=$pico_apps_home/build/$(realpath `pwd` --relative-to $pico_apps_home)
 target=$(basename $target_build_dir)
 zparseopts -F -D -K -- \
@@ -14,9 +24,20 @@ zparseopts -F -D -K -- \
            {s,-stm}=stm \
            {t,-target}:=target \
            {b,-build-only}=build_only \
-        || exit 1
+           {r,-run-only}=run_only \
+    || exit 1
+
+if [ ! -e "$pico_apps_home/build" ]
+then
+    # Initialise cmake direcotry if it does not exist yet
+    (cd "$pico_apps_home"
+     mkdir build
+     cd build
+     cmake ..)
+fi
 
 [ -f .gdb ] && gdb_config_option=(-x `realpath .gdb`)
+
 # If running in emacs mdoe, redirect stdout to null to avoid breaking
 # gdb plugin.
 [ $emacs ] && exec 4>&1 5>&2 1>/dev/null 2>/dev/null
@@ -61,15 +82,18 @@ else
     gdb_file=build/firmware.elf
     gdb_options=(-ex "target remote localhost:$gdb_port"
                  -ex "b End_Main")
-    
 fi
 
 echo '[Starting GDB...]'
+
+
+
+[ $run_only ] && gdb_options+=(-ex c -ex exit) && exec 0<<(echo y)
+
 # Restore stdout to give output to emacs.
 [ $emacs ] && exec 1>&4 2>&5
 $gdb $gdb_file \
      ${emacs:+'-i=mi'} \
      $gdb_config_option \
      $gdb_options
-                
-kill %1
+kill %openocd
