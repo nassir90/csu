@@ -1,23 +1,27 @@
 #!/bin/zsh
 
-trap 'kill %1' SIGINT SIGKILL
+trap '🍴 openocd' SIGINT SIGKILL
+
+🍴() 1>/dev/null 2>&1 jobs %?$1 && kill %?$1
 
 # Keep on goinginto parent directory until a file characteristic to
-# the root of the pico apps repository is found. In this case, we use
-# pico_sdk_import.cmake.
-find_pico_apps_home() {
-    [ -e pico_sdk_import.cmake ] && pwd && return
+# the root of the pico apps repository is found. This file is taken to
+# be the first parameter.
+find_in_parent() {
+    [ -e "$1" ] && pwd && return
     cd ..
-    [ `pwd` = / ] && echo Could not find pico apps home && exit 1
-    find_pico_apps_home
+    [ `pwd` = / ] && exit 1
+    find_in_parent "$@"
 }
+
+read_target_from_cmake_file() grep -Po '(?<=add_executable\()[^)]+(?=\))' `find_in_parent CMakeLists.txt`/CMakeLists.txt
 
 declare emacs stm
 >/dev/null which gdb-multiarch && gdb="gdb-multiarch" || gdb="arm-none-eabi-gdb"
 gdb_port=$[ $RANDOM % 1024 + 1024 ]
-pico_apps_home=${PICO_APPS_HOME:-`find_pico_apps_home`}
+pico_apps_home=${PICO_APPS_HOME:-`find_in_parent pico_sdk_import.cmake`}
 target_build_dir=$pico_apps_home/build/$(realpath `pwd` --relative-to $pico_apps_home)
-target=$(basename $target_build_dir)
+target=(-t `read_target_from_cmake_file`)
 zparseopts -F -D -K -- \
            {p,-port}:=gdb_port \
            {e,-emacs}=emacs \
@@ -52,7 +56,7 @@ make_if_not_emacs() {
 
 if [ ! $stm ]
 then
-    [ -z "$target" ] && echo Target not specified! && exit 1
+    [ -z "$target[2]" ] && echo Target not specified! && exit 1
     cd $target_build_dir
     
     make_if_not_emacs || exit 1
@@ -63,10 +67,10 @@ then
         -f interface/cmsis-dap.cfg \
         -c "adapter speed 5000" \
         -f target/rp2040.cfg \
-        -c "program $target.elf" \
+        -c "program $target[2].elf" \
         -s tcl &
 
-    gdb_file=$target.elf
+    gdb_file=$target[2].elf
     gdb_options=(-ex "target extended-remote localhost:3333"
                  -ex "load")
 else
@@ -86,9 +90,11 @@ fi
 
 echo '[Starting GDB...]'
 
-
-
-[ $run_only ] && gdb_options+=(-ex c -ex exit) && exec 0<<(echo y)
+# Basically force the command 'continue' and 'exit' to be
+# executed. Exit will prompt the user whether or not he /really/ wants
+# to exit so we have to force standard in to only contain the string
+# 'y'.
+[ $run_only ] && gdb_options+=(-ex c -ex exit) && exec 0<<<y
 
 # Restore stdout to give output to emacs.
 [ $emacs ] && exec 1>&4 2>&5
@@ -96,4 +102,6 @@ $gdb $gdb_file \
      ${emacs:+'-i=mi'} \
      $gdb_config_option \
      $gdb_options
-kill %openocd
+
+# Kill openocd if it still exists
+🍴 openocd
